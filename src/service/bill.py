@@ -5,7 +5,7 @@ from beanie import PydanticObjectId
 from fastapi import HTTPException, APIRouter, Body
 from pydantic import BaseModel, Field
 
-from src.db import Bill, BillMemberRole, BillMember, client
+from src.db import Bill, BillAccessRole, BillAccess, client
 from .user import UserSessionParsed
 
 router = APIRouter(prefix="/bill", tags=['bill'])
@@ -62,7 +62,7 @@ async def list_bills(user: UserSessionParsed, params: ListBillParams) -> list[Bi
         {"$replaceRoot": {"newRoot": "$bill_doc"}},
     ]
     # bills_cursor = await db.bill_member.aggregate(pipeline)
-    bills = await BillMember.aggregate(pipeline).to_list()
+    bills = await BillAccess.aggregate(pipeline).to_list()
     # print(type(bills), bills)
     return bills
 
@@ -72,12 +72,11 @@ async def create_bill(user: UserSessionParsed, title: str = Body(title="账单�
     """创建一个新的账单"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
-    bill = Bill(title=title, created_time=datetime.now(), item_updated_time=datetime.now())
-    await bill.insert()
-    await BillMember(bill=bill, user=user, role=BillMemberRole.OWNER).insert()
-    # Optionally, you can add the user as a member of the bill
-    # await BillMember(bill=bill, user=user, role=BillMemberRole.OWNER).insert()
-
+    async with client.start_session() as session:
+        async with await session.start_transaction():
+            bill = Bill(title=title, created_time=datetime.now(), item_updated_time=datetime.now())
+            await bill.insert(session=session)
+            await BillAccess(bill=bill, user=user, role=BillAccessRole.OWNER).insert(session=session)
     return {"bill_id": str(bill.id)}
 
 
@@ -92,15 +91,15 @@ async def delete_bill(user: UserSessionParsed, params: DeleteBillsParams):
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with client.start_session() as session:
         async with await session.start_transaction():
-            async for member in BillMember.find(
-                {"bill.$id": {"$in": params.id_list}, "role": BillMemberRole.OWNER},
+            async for member in BillAccess.find(
+                {"bill.$id": {"$in": params.id_list}, "role": BillAccessRole.OWNER},
                 session=session,
             ):
                 if member.user.ref.id != user.id:
                     raise HTTPException(status_code=403, detail="You do not have permission to delete these bills.")
 
-            await BillMember.find({"bill.$id": {"$in": params.id_list}}).delete(session)
-            await Bill.find({"_id": {"$in": params.id_list}}).delete(session)
+            await BillAccess.find({"bill.$id": {"$in": params.id_list}}).delete(session=session)
+            await Bill.find({"_id": {"$in": params.id_list}}).delete(session=session)
     return "ok"
 
 
@@ -119,8 +118,8 @@ async def update_bill(user: UserSessionParsed, params: UpdateBillParams):
             bill = await Bill.get(params.id, session=session)
             if bill is None:
                 raise HTTPException(status_code=404, detail="Bill not found.")
-            if await BillMember.find_one(
-                {"bill.$id": bill.id, "user.$id": user.id, "role": BillMemberRole.OWNER},
+            if await BillAccess.find_one(
+                {"bill.$id": bill.id, "user.$id": user.id, "role": BillAccessRole.OWNER},
                 session=session,
             ) is None:
                 raise HTTPException(status_code=403, detail="You do not have permission to update this bill.")

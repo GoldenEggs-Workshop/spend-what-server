@@ -4,8 +4,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from src.db import init_client, client
-from src.service.user import router as user_router
-from src.service.bill import router as bill_router
+from src.service import router
 
 
 @asynccontextmanager
@@ -16,13 +15,11 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
-app.include_router(user_router)
-app.include_router(bill_router)
+app.include_router(router)
 
 
 def main():
-    uvicorn.run("main:app")
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
 
 
 if __name__ == '__main__':

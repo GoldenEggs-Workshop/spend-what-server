@@ -9,6 +9,6 @@ async def init_client():
         database=client.get_database(),
         document_models=[
             User, UserSession,
-            Bill, BillMember, BillItem
+            Bill, BillAccess, BillItem, BillLog
         ]
     )

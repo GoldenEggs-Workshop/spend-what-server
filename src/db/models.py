@@ -5,6 +5,7 @@ from typing import Annotated
 
 from beanie import Document, Indexed, Link
 from pydantic import Field
+from pymongo import DESCENDING
 
 
 class User(Document):
@@ -30,25 +31,37 @@ class UserSession(Document):
 class Bill(Document):
     """账单"""
     title: Annotated[str, Field(title="标题")]
-    created_time: datetime
-    item_updated_time: datetime
+    members: Annotated[list[str], Field(title="成员列表")] = []
+    created_time: Annotated[datetime, Field(title="创建时间"), Indexed(index_type=DESCENDING)]
+    item_updated_time: Annotated[datetime, Field(title="更新时间"), Indexed(index_type=DESCENDING)]
 
     class Settings:
         name = "bill"
 
 
-class BillMemberRole(Enum):
+class BillAccessRole(Enum):
     """账单成员角色"""
     OWNER = "owner"
     MEMBER = "member"
     OBSERVER = "observer"
 
 
+class BillAccess(Document):
+    """账单访问权限"""
+    bill: Annotated[Link[Bill], Indexed()]
+    user: Annotated[Link[User], Indexed()]
+    role: Annotated[BillAccessRole, Field(title="权限角色")] = BillAccessRole.OBSERVER
+
+    class Settings:
+        name = "bill_access"
+
+
 class BillMember(Document):
     """账单成员"""
     bill: Annotated[Link[Bill], Indexed()]
-    user: Annotated[Link[User], Indexed()]
-    role: Annotated[BillMemberRole, Field(title="角色")] = BillMemberRole.OBSERVER
+    name: Annotated[str, Field(title="成员名称", max_length=64), Indexed()]
+    linked_user: Annotated[Link[User] | None, Field(title="关联用户"), Indexed()] = None
+    role: Annotated[BillAccessRole, Field(title="权限角色")] = BillAccessRole.OBSERVER
 
     class Settings:
         name = "bill_member"
@@ -57,10 +70,31 @@ class BillMember(Document):
 class BillItem(Document):
     """账单条目"""
     bill: Annotated[Link[Bill], Indexed()]
-    description: Annotated[str, Field(title="描述")]
+    type: Annotated[str, Field(title="类型", max_length=64)]
+    type_icon: Annotated[str, Field(title="类型图标")] = "🧐"
+    description: Annotated[str, Field(title="描述", max_length=256)]
     amount: Annotated[Decimal, Field(title="金额")]
-    currency: Annotated[str, Field(title="货币")] = "CNY"
-    created_time: datetime
+    currency: Annotated[str, Field(title="货币")]
+    created_time: Annotated[datetime, Field(title="创建时间")]
+    occurred_time: Annotated[datetime, Field(title="发生时间"), Indexed(index_type=DESCENDING)]
 
     class Settings:
         name = "bill_item"
+
+
+class BillAction(Enum):
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+
+
+class BillLog(Document):
+    """账单日志"""
+    bill: Annotated[Link[Bill], Indexed()]
+    user: Annotated[Link[User], Indexed()]
+    action: Annotated[str, Field(title="操作")]
+    description: Annotated[str, Field(title="描述")] = ""
+    time: Annotated[datetime, Field(title="操作时间"), Indexed(index_type=DESCENDING)]
+
+    class Settings:
+        name = "bill_log"
