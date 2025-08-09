@@ -101,14 +101,14 @@ async def delete_bill_item(user: UserSessionParsed, params: DeleteBillItemParams
     return "ok"
 
 
-class ListBillitemParams(BaseModel):
+class ListBillItemParams(BaseModel):
     bill_id: Annotated[PydanticObjectId, Body(title="账单ID", embed=True)]
     skip: Annotated[int, Field(title="跳过的账单条目数量", ge=0)] = 0
     limit: Annotated[int, Field(title="账单条目数量", ge=0, le=128)] = 16
 
 
 @router.post("/list")
-async def list_bill_items(user: UserSessionParsed, params: ListBillitemParams) -> list[BillItem]:
+async def list_bill_items(user: UserSessionParsed, params: ListBillItemParams) -> list[BillItem]:
     """列出账单条目"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
@@ -151,7 +151,7 @@ async def update_bill_item(user: UserSessionParsed, params: UpdateBillItemParams
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with client.start_session() as session:
         async with await session.start_transaction():
-            bill = await check_bill_permission(
+            await check_bill_permission(
                 params.bill_id,
                 user,
                 [BillAccessRole.OWNER, BillAccessRole.MEMBER],
