@@ -7,7 +7,7 @@ from fastapi import HTTPException, APIRouter, Response, Cookie, Depends
 from pydantic import Field, BaseModel
 from pymongo.errors import DuplicateKeyError
 
-from src.db import User, UserSession, client, mongo_transaction
+from src.db import User, UserSession, mongo_transaction
 
 router = APIRouter(prefix="/user", tags=['user'])
 

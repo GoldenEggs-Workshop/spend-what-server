@@ -1,15 +1,13 @@
 from datetime import datetime
-from decimal import Decimal
 from typing import Annotated, Sequence
 
-from beanie import PydanticObjectId, Indexed
-from src.types import PydanticDecimal128
+from beanie import PydanticObjectId
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
-from pymongo import DESCENDING
 
-from src.db import client, Bill, BillItem, BillAccess, BillAccessRole, BillLog, mongo_transaction
+from src.db import Bill, BillItem, BillAccess, BillAccessRole, mongo_transaction
 from src.service.user import UserSessionParsed
+from src.types import PydanticDecimal128
 
 router = APIRouter(prefix="/bill/item", tags=['bill/item'])
 
@@ -33,6 +31,24 @@ async def check_bill_permission(
     if has_access is None:
         raise HTTPException(status_code=403, detail="You do not have permission for this bill.")
     return bill
+
+
+async def get_bill_item_with_permission(
+    bill_id: PydanticObjectId,
+    item_id: PydanticObjectId,
+    user: UserSessionParsed,
+    allowed_roles: Sequence[BillAccessRole],
+    session=None
+) -> BillItem:
+    # 校验账单权限
+    await check_bill_permission(bill_id, user, allowed_roles, session=session)
+
+    # 查找条目
+    item = await BillItem.find_one({"_id": item_id, "bill.$id": bill_id}, session=session)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Bill item not found.")
+
+    return item
 
 
 class CreateBillItemParams(BaseModel):
@@ -84,16 +100,11 @@ async def delete_bill_item(user: UserSessionParsed, params: DeleteBillItemParams
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        await check_bill_permission(
-            params.bill_id,
-            user,
+        item = await get_bill_item_with_permission(
+            params.bill_id, params.item_id, user,
             [BillAccessRole.OWNER, BillAccessRole.MEMBER],
             session=session
         )
-
-        item = await BillItem.find_one({"_id": params.item_id, "bill.$id": params.bill_id}, session=session)
-        if item is None:
-            raise HTTPException(status_code=404, detail="Bill item not found.")
         await item.delete(session=session)
 
     return "ok"
@@ -148,16 +159,11 @@ async def update_bill_item(user: UserSessionParsed, params: UpdateBillItemParams
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        await check_bill_permission(
-            params.bill_id,
-            user,
+        item = await get_bill_item_with_permission(
+            params.bill_id, params.item_id, user,
             [BillAccessRole.OWNER, BillAccessRole.MEMBER],
             session=session
         )
-
-        item = await BillItem.find_one({"_id": params.item_id, "bill.$id": params.bill_id}, session=session)
-        if item is None:
-            raise HTTPException(status_code=404, detail="Bill item not found.")
 
         await item.update(
             {

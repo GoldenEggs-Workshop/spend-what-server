@@ -1,12 +1,12 @@
 from datetime import datetime
-from decimal import Decimal
 from enum import Enum
 from typing import Annotated
 
 from beanie import Document, Indexed, Link
 # from bson import Decimal128
-from pydantic import Field, field_validator
+from pydantic import Field
 from pymongo import DESCENDING
+
 from src.types import PydanticDecimal128
 
 

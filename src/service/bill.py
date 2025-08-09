@@ -5,7 +5,7 @@ from beanie import PydanticObjectId
 from fastapi import HTTPException, APIRouter, Body
 from pydantic import BaseModel, Field
 
-from src.db import Bill, BillAccessRole, BillAccess, client, BillItem, mongo_transaction
+from src.db import Bill, BillAccessRole, BillAccess, BillItem, mongo_transaction
 from .user import UserSessionParsed
 
 router = APIRouter(prefix="/bill", tags=['bill'])
