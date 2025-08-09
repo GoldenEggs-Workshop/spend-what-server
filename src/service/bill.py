@@ -26,7 +26,7 @@ router = APIRouter(prefix="/bill", tags=['bill'])
 
 class ListBillParams(BaseModel):
     skip: Annotated[int, Field(title="跳过的账单数量", ge=0)] = 0
-    limit: Annotated[int, Field(title="跳过的账单数量", ge=0, le=128)] = 16
+    limit: Annotated[int, Field(title="账单数量", ge=0, le=128)] = 16
 
 
 @router.post("/list")

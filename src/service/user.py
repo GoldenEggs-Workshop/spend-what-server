@@ -44,7 +44,7 @@ async def register_user(user: Annotated[ApiUser, Field(title="用户")]):
             password = sha256(user.password.encode("utf-8")).hexdigest()
             user = User(username=user.username, password_sha256=password)
             try:
-                await user.insert(session)
+                await user.insert(session=session)
             except DuplicateKeyError as e:
                 k = e.details['keyValue'].keys()
                 k = list(k)[0]

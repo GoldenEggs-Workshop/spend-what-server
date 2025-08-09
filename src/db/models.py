@@ -4,9 +4,10 @@ from enum import Enum
 from typing import Annotated
 
 from beanie import Document, Indexed, Link
-from bson import Decimal128
+# from bson import Decimal128
 from pydantic import Field, field_validator
 from pymongo import DESCENDING
+from src.types import PydanticDecimal128
 
 
 class User(Document):
@@ -69,11 +70,12 @@ class BillMember(Document):
 
 class BillItem(Document):
     """账单条目"""
+
     bill: Annotated[Link[Bill], Indexed()]
     type: Annotated[str, Field(title="类型", max_length=64)]
     type_icon: Annotated[str, Field(title="类型图标")] = "🧐"
     description: Annotated[str, Field(title="描述", max_length=256)]
-    amount: Annotated[Decimal, Field(title="金额")]
+    amount: Annotated[PydanticDecimal128, Field(title="金额")]
     currency: Annotated[str, Field(title="货币")]
     created_time: Annotated[datetime, Field(title="创建时间")]
     occurred_time: Annotated[datetime, Field(title="发生时间"), Indexed(index_type=DESCENDING)]

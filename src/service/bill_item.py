@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Annotated, Sequence
 
 from beanie import PydanticObjectId, Indexed
+from src.types import PydanticDecimal128
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 from pymongo import DESCENDING
@@ -39,7 +40,7 @@ class CreateBillItemParams(BaseModel):
     type: Annotated[str, Field(title="类型", max_length=64)]
     type_icon: Annotated[str, Field(title="类型图标")]
     description: Annotated[str, Field(title="描述", max_length=256)]
-    amount: Annotated[Decimal, Field(title="金额")]
+    amount: Annotated[PydanticDecimal128, Field(title="金额")]
     currency: Annotated[str, Field(title="货币")]
     occurred_time: Annotated[datetime, Field(title="发生时间")]
 
@@ -98,3 +99,81 @@ async def delete_bill_item(user: UserSessionParsed, params: DeleteBillItemParams
             await item.delete(session=session)
 
     return "ok"
+
+
+class ListBillitemParams(BaseModel):
+    bill_id: Annotated[PydanticObjectId, Body(title="账单ID", embed=True)]
+    skip: Annotated[int, Field(title="跳过的账单条目数量", ge=0)] = 0
+    limit: Annotated[int, Field(title="账单条目数量", ge=0, le=128)] = 16
+
+
+@router.post("/list")
+async def list_bill_items(user: UserSessionParsed, params: ListBillitemParams) -> list[BillItem]:
+    """列出账单条目"""
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not authenticated.")
+    await check_bill_permission(
+        params.bill_id,
+        user,
+        [BillAccessRole.OWNER, BillAccessRole.MEMBER, BillAccessRole.OBSERVER]
+    )
+
+    pipeline = [
+        # 1. 匹配当前账单的 BillItem 记录
+        {"$match": {"bill.$id": params.bill_id}},
+
+        # 2. 按 bill_doc.item_updated_time 降序排序
+        {"$sort": {"occurred_time": -1}},
+
+        # 3. 跳过 skip 条，限制 limit 条
+        {"$skip": params.skip},
+        {"$limit": params.limit},
+    ]
+    bills = await BillItem.aggregate(pipeline).to_list()
+    return bills
+
+
+class UpdateBillItemParams(BaseModel):
+    bill_id: Annotated[PydanticObjectId, Field(title="账单 ID")]
+    item_id: Annotated[PydanticObjectId, Field(title="条目 ID")]
+    type: Annotated[str, Field(title="类型", max_length=64)]
+    type_icon: Annotated[str, Field(title="类型图标")]
+    description: Annotated[str, Field(title="描述", max_length=256)]
+    amount: Annotated[PydanticDecimal128, Field(title="金额")]
+    currency: Annotated[str, Field(title="货币")]
+    occurred_time: Annotated[datetime, Field(title="发生时间")]
+
+
+@router.post("/update")
+async def update_bill_item(user: UserSessionParsed, params: UpdateBillItemParams):
+    """更新账单条目"""
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not authenticated.")
+    async with client.start_session() as session:
+        async with await session.start_transaction():
+            bill = await check_bill_permission(
+                params.bill_id,
+                user,
+                [BillAccessRole.OWNER, BillAccessRole.MEMBER],
+                session=session
+            )
+
+            item = await BillItem.find_one({"_id": params.item_id, "bill.$id": params.bill_id}, session=session)
+            if item is None:
+                raise HTTPException(status_code=404, detail="Bill item not found.")
+
+            await item.update(
+                {
+                    "$set": {
+                        "type": params.type,
+                        "type_icon": params.type_icon,
+                        "description": params.description,
+                        "amount": params.amount,
+                        "currency": params.currency,
+                        "occurred_time": params.occurred_time
+                    }
+                },
+                session=session
+            )
+
+        return "ok"
