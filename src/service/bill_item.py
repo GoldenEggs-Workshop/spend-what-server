@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 from pymongo import DESCENDING
 
-from src.db import client, Bill, BillItem, BillAccess, BillAccessRole, BillLog
+from src.db import client, Bill, BillItem, BillAccess, BillAccessRole, BillLog, mongo_transaction
 from src.service.user import UserSessionParsed
 
 router = APIRouter(prefix="/bill/item", tags=['bill/item'])
@@ -50,27 +50,26 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
     """创建账单条目"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
-    async with client.start_session() as session:
-        async with await session.start_transaction():
-            bill = await check_bill_permission(
-                params.bill_id,
-                user,
-                [BillAccessRole.OWNER, BillAccessRole.MEMBER],
-                session=session
-            )
+    async with mongo_transaction() as session:
+        bill = await check_bill_permission(
+            params.bill_id,
+            user,
+            [BillAccessRole.OWNER, BillAccessRole.MEMBER],
+            session=session
+        )
 
-            now = datetime.now()
-            item = BillItem(
-                bill=bill.to_ref(),
-                type=params.type,
-                type_icon=params.type_icon,
-                description=params.description,
-                amount=params.amount,
-                currency=params.currency,
-                created_time=now,
-                occurred_time=params.occurred_time
-            )
-            await item.insert(session=session)
+        now = datetime.now()
+        item = BillItem(
+            bill=bill.to_ref(),
+            type=params.type,
+            type_icon=params.type_icon,
+            description=params.description,
+            amount=params.amount,
+            currency=params.currency,
+            created_time=now,
+            occurred_time=params.occurred_time
+        )
+        await item.insert(session=session)
     return {"item_id": str(item.id)}
 
 
@@ -84,19 +83,18 @@ async def delete_bill_item(user: UserSessionParsed, params: DeleteBillItemParams
     """删除账单条目"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
-    async with client.start_session() as session:
-        async with await session.start_transaction():
-            await check_bill_permission(
-                params.bill_id,
-                user,
-                [BillAccessRole.OWNER, BillAccessRole.MEMBER],
-                session=session
-            )
+    async with mongo_transaction() as session:
+        await check_bill_permission(
+            params.bill_id,
+            user,
+            [BillAccessRole.OWNER, BillAccessRole.MEMBER],
+            session=session
+        )
 
-            item = await BillItem.find_one({"_id": params.item_id, "bill.$id": params.bill_id}, session=session)
-            if item is None:
-                raise HTTPException(status_code=404, detail="Bill item not found.")
-            await item.delete(session=session)
+        item = await BillItem.find_one({"_id": params.item_id, "bill.$id": params.bill_id}, session=session)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Bill item not found.")
+        await item.delete(session=session)
 
     return "ok"
 
@@ -149,31 +147,30 @@ async def update_bill_item(user: UserSessionParsed, params: UpdateBillItemParams
     """更新账单条目"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
-    async with client.start_session() as session:
-        async with await session.start_transaction():
-            await check_bill_permission(
-                params.bill_id,
-                user,
-                [BillAccessRole.OWNER, BillAccessRole.MEMBER],
-                session=session
-            )
+    async with mongo_transaction() as session:
+        await check_bill_permission(
+            params.bill_id,
+            user,
+            [BillAccessRole.OWNER, BillAccessRole.MEMBER],
+            session=session
+        )
 
-            item = await BillItem.find_one({"_id": params.item_id, "bill.$id": params.bill_id}, session=session)
-            if item is None:
-                raise HTTPException(status_code=404, detail="Bill item not found.")
+        item = await BillItem.find_one({"_id": params.item_id, "bill.$id": params.bill_id}, session=session)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Bill item not found.")
 
-            await item.update(
-                {
-                    "$set": {
-                        "type": params.type,
-                        "type_icon": params.type_icon,
-                        "description": params.description,
-                        "amount": params.amount,
-                        "currency": params.currency,
-                        "occurred_time": params.occurred_time
-                    }
-                },
-                session=session
-            )
+        await item.update(
+            {
+                "$set": {
+                    "type": params.type,
+                    "type_icon": params.type_icon,
+                    "description": params.description,
+                    "amount": params.amount,
+                    "currency": params.currency,
+                    "occurred_time": params.occurred_time
+                }
+            },
+            session=session
+        )
 
         return "ok"

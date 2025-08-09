@@ -5,7 +5,7 @@ from beanie import PydanticObjectId
 from fastapi import HTTPException, APIRouter, Body
 from pydantic import BaseModel, Field
 
-from src.db import Bill, BillAccessRole, BillAccess, client, BillItem
+from src.db import Bill, BillAccessRole, BillAccess, client, BillItem, mongo_transaction
 from .user import UserSessionParsed
 
 router = APIRouter(prefix="/bill", tags=['bill'])
@@ -72,11 +72,10 @@ async def create_bill(user: UserSessionParsed, title: str = Body(title="账单�
     """创建一个新的账单"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
-    async with client.start_session() as session:
-        async with await session.start_transaction():
-            bill = Bill(title=title, created_time=datetime.now(), item_updated_time=datetime.now())
-            await bill.insert(session=session)
-            await BillAccess(bill=bill, user=user, role=BillAccessRole.OWNER).insert(session=session)
+    async with mongo_transaction() as session:
+        bill = Bill(title=title, created_time=datetime.now(), item_updated_time=datetime.now())
+        await bill.insert(session=session)
+        await BillAccess(bill=bill, user=user, role=BillAccessRole.OWNER).insert(session=session)
     return {"bill_id": str(bill.id)}
 
 
@@ -89,18 +88,17 @@ async def delete_bill(user: UserSessionParsed, params: DeleteBillsParams):
     """批量删除账单"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
-    async with client.start_session() as session:
-        async with await session.start_transaction():
-            async for member in BillAccess.find(
-                {"bill.$id": {"$in": params.id_list}, "role": BillAccessRole.OWNER},
-                session=session,
-            ):
-                if member.user.ref.id != user.id:
-                    raise HTTPException(status_code=403, detail="You do not have permission to delete these bills.")
+    async with mongo_transaction() as session:
+        async for member in BillAccess.find(
+            {"bill.$id": {"$in": params.id_list}, "role": BillAccessRole.OWNER},
+            session=session,
+        ):
+            if member.user.ref.id != user.id:
+                raise HTTPException(status_code=403, detail="You do not have permission to delete these bills.")
 
-            await BillAccess.find({"bill.$id": {"$in": params.id_list}}).delete(session=session)
-            await Bill.find({"_id": {"$in": params.id_list}}).delete(session=session)
-            await BillItem.find({"bill.$id": {"$in": params.id_list}}).delete(session=session)
+        await BillAccess.find({"bill.$id": {"$in": params.id_list}}).delete(session=session)
+        await Bill.find({"_id": {"$in": params.id_list}}).delete(session=session)
+        await BillItem.find({"bill.$id": {"$in": params.id_list}}).delete(session=session)
     return "ok"
 
 
@@ -114,16 +112,15 @@ async def update_bill(user: UserSessionParsed, params: UpdateBillParams):
     """更新账单信息"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
-    async with client.start_session() as session:
-        async with await session.start_transaction():
-            bill = await Bill.get(params.id, session=session)
-            if bill is None:
-                raise HTTPException(status_code=404, detail="Bill not found.")
-            if await BillAccess.find_one(
-                {"bill.$id": bill.id, "user.$id": user.id, "role": BillAccessRole.OWNER},
-                session=session,
-            ) is None:
-                raise HTTPException(status_code=403, detail="You do not have permission to update this bill.")
-            bill.title = params.title
-            await bill.save(session=session)
+    async with mongo_transaction() as session:
+        bill = await Bill.get(params.id, session=session)
+        if bill is None:
+            raise HTTPException(status_code=404, detail="Bill not found.")
+        if await BillAccess.find_one(
+            {"bill.$id": bill.id, "user.$id": user.id, "role": BillAccessRole.OWNER},
+            session=session,
+        ) is None:
+            raise HTTPException(status_code=403, detail="You do not have permission to update this bill.")
+        bill.title = params.title
+        await bill.save(session=session)
     return "ok"

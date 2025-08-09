@@ -1,6 +1,6 @@
 from beanie import init_beanie
 
-from src.db.client import client
+from src.db.client import client, mongo_transaction
 from src.db.models import *
 
 

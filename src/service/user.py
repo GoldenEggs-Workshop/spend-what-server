@@ -7,7 +7,7 @@ from fastapi import HTTPException, APIRouter, Response, Cookie, Depends
 from pydantic import Field, BaseModel
 from pymongo.errors import DuplicateKeyError
 
-from src.db import User, UserSession, client
+from src.db import User, UserSession, client, mongo_transaction
 
 router = APIRouter(prefix="/user", tags=['user'])
 
@@ -39,33 +39,31 @@ class ApiUser(BaseModel):
 @router.post("/register")
 async def register_user(user: Annotated[ApiUser, Field(title="用户")]):
     """用户注册"""
-    async with client.start_session() as session:
-        async with await session.start_transaction():
-            password = sha256(user.password.encode("utf-8")).hexdigest()
-            user = User(username=user.username, password_sha256=password)
-            try:
-                await user.insert(session=session)
-            except DuplicateKeyError as e:
-                k = e.details['keyValue'].keys()
-                k = list(k)[0]
-                raise HTTPException(status_code=400, detail=f"{k} is already existed.")
+    async with mongo_transaction() as session:
+        password = sha256(user.password.encode("utf-8")).hexdigest()
+        user = User(username=user.username, password_sha256=password)
+        try:
+            await user.insert(session=session)
+        except DuplicateKeyError as e:
+            k = e.details['keyValue'].keys()
+            k = list(k)[0]
+            raise HTTPException(status_code=400, detail=f"{k} is already existed.")
     return ""
 
 
 @router.post("/login")
 async def login_user(params: ApiUser, resp: Response) -> dict:
     """用户登录"""
-    async with client.start_session() as session:
-        async with await session.start_transaction():
-            user = await User.find_one(User.username == params.username)
-            if user is None:
-                raise HTTPException(status_code=400, detail="Username or password are not matched.")
-            password_sha256 = sha256(params.password.encode("utf-8")).hexdigest()
-            if password_sha256 != user.password_sha256:
-                raise HTTPException(status_code=400, detail="Username or password are not matched.")
-            value = str(uuid4())
-            now = datetime.now()
-            await UserSession(value=value, expires_at=now + timedelta(days=30), user=user).insert(session=session)
+    async with mongo_transaction() as session:
+        user = await User.find_one(User.username == params.username)
+        if user is None:
+            raise HTTPException(status_code=400, detail="Username or password are not matched.")
+        password_sha256 = sha256(params.password.encode("utf-8")).hexdigest()
+        if password_sha256 != user.password_sha256:
+            raise HTTPException(status_code=400, detail="Username or password are not matched.")
+        value = str(uuid4())
+        now = datetime.now()
+        await UserSession(value=value, expires_at=now + timedelta(days=30), user=user).insert(session=session)
 
     resp.set_cookie("session", value)
     return {"cookie": {"session": value}}
