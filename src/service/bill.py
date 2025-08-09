@@ -5,7 +5,7 @@ from beanie import PydanticObjectId
 from fastapi import HTTPException, APIRouter, Body
 from pydantic import BaseModel, Field
 
-from src.db import Bill, BillAccessRole, BillAccess, client
+from src.db import Bill, BillAccessRole, BillAccess, client, BillItem
 from .user import UserSessionParsed
 
 router = APIRouter(prefix="/bill", tags=['bill'])
@@ -100,6 +100,7 @@ async def delete_bill(user: UserSessionParsed, params: DeleteBillsParams):
 
             await BillAccess.find({"bill.$id": {"$in": params.id_list}}).delete(session=session)
             await Bill.find({"_id": {"$in": params.id_list}}).delete(session=session)
+            await BillItem.find({"bill.$id": {"$in": params.id_list}}).delete(session=session)
     return "ok"
 
 
