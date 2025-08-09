@@ -68,7 +68,7 @@ async def list_bills(user: UserSessionParsed, params: ListBillParams) -> list[Bi
 
 
 @router.post("/create")
-async def create_bill(user: UserSessionParsed, title: str = Body(title="账单标题", embed=True)):
+async def create_bill(user: UserSessionParsed, title: str = Body(title="账单标题", embed=True)) -> dict:
     """创建一个新的账单"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")

@@ -4,7 +4,8 @@ from enum import Enum
 from typing import Annotated
 
 from beanie import Document, Indexed, Link
-from pydantic import Field
+from bson import Decimal128
+from pydantic import Field, field_validator
 from pymongo import DESCENDING
 
 
@@ -61,7 +62,6 @@ class BillMember(Document):
     bill: Annotated[Link[Bill], Indexed()]
     name: Annotated[str, Field(title="成员名称", max_length=64), Indexed()]
     linked_user: Annotated[Link[User] | None, Field(title="关联用户"), Indexed()] = None
-    role: Annotated[BillAccessRole, Field(title="权限角色")] = BillAccessRole.OBSERVER
 
     class Settings:
         name = "bill_member"
