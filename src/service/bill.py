@@ -1,23 +1,69 @@
 from datetime import datetime
-from typing import cast
+from typing import Annotated
 
+from beanie import PydanticObjectId
 from fastapi import HTTPException, APIRouter, Body
+from pydantic import BaseModel, Field
 
-from src.db import Bill, BillMemberRole, BillMember
+from src.db import Bill, BillMemberRole, BillMember, client
 from .user import UserSessionParsed
 
 router = APIRouter(prefix="/bill", tags=['bill'])
 
 
+# @router.post("/list")
+# async def list_bills(user: UserSessionParsed) -> list[Bill]:
+#     """获取用户的账单列表"""
+#     if user is None:
+#         raise HTTPException(status_code=401, detail="User not authenticated.")
+#     bill_members = await BillMember.find(BillMember.user.ref.id == user.id, fetch_links=True).to_list()
+#     # bills = [await Bill.get(bill_member.bill.ref.id) for bill_member in bill_members]
+#
+#     bills = cast(list[Bill], [bm.bill for bm in bill_members])
+#     print(bills)
+#     return bills
+
+
+class ListBillParams(BaseModel):
+    skip: Annotated[int, Field(title="跳过的账单数量", ge=0)] = 0
+    limit: Annotated[int, Field(title="跳过的账单数量", ge=0, le=128)] = 16
+
+
 @router.post("/list")
-async def list_bills(user: UserSessionParsed) -> list[Bill]:
+async def list_bills(user: UserSessionParsed, params: ListBillParams) -> list[Bill]:
     """获取用户的账单列表"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
-    bill_members = await BillMember.find(BillMember.user.id == user.id, fetch_links=True).to_list()
-    # bills = [await Bill.get(bill_member.bill.ref.id) for bill_member in bill_members]
+    pipeline = [
+        # 1. 匹配当前用户的 BillMember 记录
+        {"$match": {"user.$id": user.id}},
 
-    bills = cast(list[Bill], [bm.bill for bm in bill_members])
+        # 2. 通过 $lookup 关联 Bill 集合
+        {
+            "$lookup": {
+                "from": "bill",  # 你数据库中 Bill 集合的名称，注意大小写
+                "localField": "bill.$id",  # BillMember 的 bill 字段
+                "foreignField": "_id",  # Bill 的 _id 字段
+                "as": "bill_doc"
+            }
+        },
+
+        # 3. 展开 bill_doc 数组，变成对象
+        {"$unwind": "$bill_doc"},
+
+        # 4. 按 bill_doc.item_updated_time 降序排序
+        {"$sort": {"bill_doc.item_updated_time": -1}},
+
+        # 5. 跳过 skip 条，限制 limit 条
+        {"$skip": params.skip},
+        {"$limit": params.limit},
+
+        # 6. 最终只输出 bill_doc 部分（账单详细）
+        {"$replaceRoot": {"newRoot": "$bill_doc"}},
+    ]
+    # bills_cursor = await db.bill_member.aggregate(pipeline)
+    bills = await BillMember.aggregate(pipeline).to_list()
+    # print(type(bills), bills)
     return bills
 
 
@@ -33,3 +79,51 @@ async def create_bill(user: UserSessionParsed, title: str = Body(title="账单�
     # await BillMember(bill=bill, user=user, role=BillMemberRole.OWNER).insert()
 
     return {"bill_id": str(bill.id)}
+
+
+class DeleteBillsParams(BaseModel):
+    id_list: Annotated[list[PydanticObjectId], Field(title="账单ID列表", max_length=128)]
+
+
+@router.post("/multi/delete")
+async def delete_bill(user: UserSessionParsed, params: DeleteBillsParams):
+    """批量删除账单"""
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not authenticated.")
+    async with client.start_session() as session:
+        async with await session.start_transaction():
+            async for member in BillMember.find(
+                {"bill.$id": {"$in": params.id_list}, "role": BillMemberRole.OWNER},
+                session=session,
+            ):
+                if member.user.ref.id != user.id:
+                    raise HTTPException(status_code=403, detail="You do not have permission to delete these bills.")
+
+            await BillMember.find({"bill.$id": {"$in": params.id_list}}).delete(session)
+            await Bill.find({"_id": {"$in": params.id_list}}).delete(session)
+    return "ok"
+
+
+class UpdateBillParams(BaseModel):
+    id: Annotated[PydanticObjectId, Field(title="账单ID")]
+    title: Annotated[str, Field(title="账单标题", min_length=1)]
+
+
+@router.post("/update")
+async def update_bill(user: UserSessionParsed, params: UpdateBillParams):
+    """更新账单信息"""
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not authenticated.")
+    async with client.start_session() as session:
+        async with await session.start_transaction():
+            bill = await Bill.get(params.id, session=session)
+            if bill is None:
+                raise HTTPException(status_code=404, detail="Bill not found.")
+            if await BillMember.find_one(
+                {"bill.$id": bill.id, "user.$id": user.id, "role": BillMemberRole.OWNER},
+                session=session,
+            ) is None:
+                raise HTTPException(status_code=403, detail="You do not have permission to update this bill.")
+            bill.title = params.title
+            await bill.save(session=session)
+    return "ok"

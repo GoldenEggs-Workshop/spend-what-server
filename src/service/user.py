@@ -59,6 +59,13 @@ async def login_user(params: ApiUser, resp: Response):
         raise HTTPException(status_code=400, detail="Username or password are not matched.")
     session = str(uuid4())
     now = datetime.now()
+
+    # if user_session := await UserSession.find_one(UserSession.user.id == user.id):
+    #     user_session.value = session
+    #     user_session.expires_at = now + timedelta(days=30)
+    # else:
+
     await UserSession(value=session, expires_at=now + timedelta(days=30), user=user).insert()
+
     resp.set_cookie("session", session)
     return ""
