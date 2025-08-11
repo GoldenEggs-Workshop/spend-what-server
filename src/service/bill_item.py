@@ -6,31 +6,11 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
 from src.db import Bill, BillItem, BillAccess, BillAccessRole, mongo_transaction
-from src.service.user import UserSessionParsed
+from .user import UserSessionParsed
 from src.types import PydanticDecimal128
+from .bill import check_bill_permission
 
 router = APIRouter(prefix="/bill/item", tags=['bill/item'])
-
-
-async def check_bill_permission(
-    bill_id: PydanticObjectId,
-    user: UserSessionParsed,
-    allowed_roles: Sequence[BillAccessRole],
-    session=None
-) -> Bill:
-    """检查用户是否有访问账单的权限，返回 Bill 对象"""
-    bill = await Bill.get(bill_id, session=session)
-    if bill is None:
-        raise HTTPException(status_code=404, detail="Bill not found.")
-
-    has_access = await BillAccess.find_one({
-        "bill.$id": bill.id,
-        "user.$id": user.id,
-        "role": {"$in": allowed_roles}
-    }, session=session)
-    if has_access is None:
-        raise HTTPException(status_code=403, detail="You do not have permission for this bill.")
-    return bill
 
 
 async def get_bill_item_with_permission(

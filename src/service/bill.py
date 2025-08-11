@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Sequence
 
 from beanie import PydanticObjectId
 from fastapi import HTTPException, APIRouter, Body
@@ -11,17 +11,25 @@ from .user import UserSessionParsed
 router = APIRouter(prefix="/bill", tags=['bill'])
 
 
-# @router.post("/list")
-# async def list_bills(user: UserSessionParsed) -> list[Bill]:
-#     """获取用户的账单列表"""
-#     if user is None:
-#         raise HTTPException(status_code=401, detail="User not authenticated.")
-#     bill_members = await BillMember.find(BillMember.user.ref.id == user.id, fetch_links=True).to_list()
-#     # bills = [await Bill.get(bill_member.bill.ref.id) for bill_member in bill_members]
-#
-#     bills = cast(list[Bill], [bm.bill for bm in bill_members])
-#     print(bills)
-#     return bills
+async def check_bill_permission(
+    bill_id: PydanticObjectId,
+    user: UserSessionParsed,
+    allowed_roles: Sequence[BillAccessRole],
+    session=None
+) -> Bill:
+    """检查用户是否有访问账单的权限，返回 Bill 对象"""
+    bill = await Bill.get(bill_id, session=session)
+    if bill is None:
+        raise HTTPException(status_code=404, detail="Bill not found.")
+
+    has_access = await BillAccess.find_one({
+        "bill.$id": bill.id,
+        "user.$id": user.id,
+        "role": {"$in": allowed_roles}
+    }, session=session)
+    if has_access is None:
+        raise HTTPException(status_code=403, detail="You do not have permission for this bill.")
+    return bill
 
 
 class ListBillParams(BaseModel):
@@ -73,7 +81,7 @@ async def create_bill(user: UserSessionParsed, title: str = Body(title="账单�
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        bill = Bill(title=title, created_time=datetime.now(), item_updated_time=datetime.now())
+        bill = Bill(title=title, members=[], created_time=datetime.now(), item_updated_time=datetime.now())
         await bill.insert(session=session)
         await BillAccess(bill=bill, user=user, role=BillAccessRole.OWNER).insert(session=session)
     return {"bill_id": str(bill.id)}
@@ -105,6 +113,7 @@ async def delete_bill(user: UserSessionParsed, params: DeleteBillsParams):
 class UpdateBillParams(BaseModel):
     id: Annotated[PydanticObjectId, Field(title="账单ID")]
     title: Annotated[str, Field(title="账单标题", min_length=1)]
+    members: Annotated[list[str], Field(title="成员名称列表", max_length=128)]
 
 
 @router.post("/update")
@@ -122,5 +131,36 @@ async def update_bill(user: UserSessionParsed, params: UpdateBillParams):
         ) is None:
             raise HTTPException(status_code=403, detail="You do not have permission to update this bill.")
         bill.title = params.title
+        bill.members = params.members
         await bill.save(session=session)
+    return "ok"
+
+
+class Access(BaseModel):
+    user_id: Annotated[PydanticObjectId, Field(title="用户ID")]
+    role: Annotated[BillAccessRole, Field(title="访问权限角色")]
+
+
+class UpdateBillAccessParams(BaseModel):
+    bill_id: Annotated[PydanticObjectId, Field(title="账单ID")]
+    access_list: Annotated[list[Access], Field(title="访问权限列表", max_length=128)]
+
+
+@router.post("/access/update")
+async def update_bill_access(user: UserSessionParsed, params: UpdateBillAccessParams):
+    """更新账单访问权限"""
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not authenticated.")
+    async with mongo_transaction() as session:
+        bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER], session=session)
+        await BillAccess.find(
+            {"bill.$id": params.bill_id},
+            session=session
+        ).delete(session=session)
+        # 添加新的访问权限
+        for access in params.access_list:
+            user_id = access.user_id
+            role = access.role
+            await BillAccess(bill=bill.to_ref(), user=user_id, role=role).insert(session=session)
+
     return "ok"
