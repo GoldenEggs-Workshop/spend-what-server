@@ -127,7 +127,7 @@ async def list_bill_items(user: UserSessionParsed, params: ListBillItemParams) -
     #     {"$limit": params.limit},
     # ]
     # bills = await BillItem.aggregate(pipeline).to_list()
-    
+
     bills = await (
         BillItem.find_all()
         .sort("-occurred_time")
