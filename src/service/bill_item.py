@@ -38,6 +38,7 @@ class CreateBillItemParams(BaseModel):
     description: Annotated[str, Field(title="描述", max_length=256)]
     amount: Annotated[PydanticDecimal128, Field(title="金额")]
     currency: Annotated[str, Field(title="货币")]
+    paid_by: Annotated[str, Field(title="付款人", max_length=64)]
     occurred_time: Annotated[datetime, Field(title="发生时间")]
 
 
@@ -54,6 +55,9 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
             session=session
         )
 
+        if params.paid_by not in bill.members:
+            raise HTTPException(status_code=400, detail="Paid by user is not a member of the bill.")
+
         now = datetime.now()
         item = BillItem(
             bill=bill.to_ref(),
@@ -62,6 +66,8 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
             description=params.description,
             amount=params.amount,
             currency=params.currency,
+            created_by=user.to_ref(),
+            paid_by=params.paid_by,
             created_time=now,
             occurred_time=params.occurred_time
         )
@@ -130,6 +136,7 @@ class UpdateBillItemParams(BaseModel):
     description: Annotated[str, Field(title="描述", max_length=256)]
     amount: Annotated[PydanticDecimal128, Field(title="金额")]
     currency: Annotated[str, Field(title="货币")]
+    paid_by: Annotated[str, Field(title="付款人", max_length=64)]
     occurred_time: Annotated[datetime, Field(title="发生时间")]
 
 
@@ -144,6 +151,11 @@ async def update_bill_item(user: UserSessionParsed, params: UpdateBillItemParams
             [BillAccessRole.OWNER, BillAccessRole.MEMBER],
             session=session
         )
+
+        bill = await item.bill.fetch()
+
+        if params.paid_by not in bill.members:
+            raise HTTPException(status_code=400, detail="Paid by user is not a member of the bill.")
 
         await item.update(
             {

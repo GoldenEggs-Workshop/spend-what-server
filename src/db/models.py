@@ -77,6 +77,8 @@ class BillItem(Document):
     description: Annotated[str, Field(title="描述", max_length=256)]
     amount: Annotated[PydanticDecimal128, Field(title="金额")]
     currency: Annotated[str, Field(title="货币")]
+    created_by: Annotated[Link[User], Field(title="创建人"), Indexed()]
+    paid_by: Annotated[str, Field(title="付款人"),Indexed()]
     created_time: Annotated[datetime, Field(title="创建时间")]
     occurred_time: Annotated[datetime, Field(title="发生时间"), Indexed(index_type=DESCENDING)]
 
