@@ -1,11 +1,11 @@
 from datetime import datetime
 from typing import Annotated, Sequence
 
-from beanie import PydanticObjectId
+from beanie import PydanticObjectId, Link
 from fastapi import HTTPException, APIRouter, Body
 from pydantic import BaseModel, Field
 
-from src.db import Bill, BillAccessRole, BillAccess, BillItem, mongo_transaction
+from src.db import Bill, BillAccessRole, BillAccess, BillItem, mongo_transaction, BillMember, User
 from .user import UserSessionParsed
 
 router = APIRouter(prefix="/bill", tags=['bill'])
@@ -94,7 +94,7 @@ class DeleteBillsParams(BaseModel):
 
 
 @router.post("/multi/delete")
-async def delete_bill(user: UserSessionParsed, params: DeleteBillsParams):
+async def delete_bill(user: UserSessionParsed, params: DeleteBillsParams) -> str:
     """批量删除账单"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
@@ -118,7 +118,7 @@ class UpdateBillParams(BaseModel):
 
 
 @router.post("/update")
-async def update_bill(user: UserSessionParsed, params: UpdateBillParams):
+async def update_bill(user: UserSessionParsed, params: UpdateBillParams) -> str:
     """更新账单信息"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
@@ -147,7 +147,7 @@ class UpdateBillAccessParams(BaseModel):
 
 
 @router.post("/access/update")
-async def update_bill_access(user: UserSessionParsed, params: UpdateBillAccessParams):
+async def update_bill_access(user: UserSessionParsed, params: UpdateBillAccessParams) -> str:
     """更新账单访问权限"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
@@ -171,52 +171,79 @@ class UpdateBillMembersParams(BaseModel):
     members: Annotated[list[str], Field(title="成员名称列表", max_length=128)]
 
 
-@router.post("/member/update")
-async def update_bill_members(user: UserSessionParsed, params: UpdateBillMembersParams):
-    """更新账单成员列表"""
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not authenticated.")
-    async with mongo_transaction() as session:
-        bill = await check_bill_permission(params.id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
-                                           session=session)
-        bill.members = params.members
-        await bill.save(session=session)
-    return "ok"
+# @router.post("/member/update")
+# async def update_bill_members(user: UserSessionParsed, params: UpdateBillMembersParams):
+#     """更新账单成员列表"""
+#     if user is None:
+#         raise HTTPException(status_code=401, detail="User not authenticated.")
+#     async with mongo_transaction() as session:
+#         bill = await check_bill_permission(params.id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
+#                                            session=session)
+#         bill.members = params.members
+#         await bill.save(session=session)
+#     return "ok"
+
+
+class AddBillMemberParams(BaseModel):
+    bill_id: Annotated[PydanticObjectId, Field(title="账单ID")]
+    name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64)]
 
 
 @router.post("/member/add")
-async def add_bill_member(
-    user: UserSessionParsed,
-    bill_id: Annotated[PydanticObjectId, Body(title="账单ID", embed=True)],
-    name: Annotated[str, Body(title="成员名称", min_length=1, max_length=64, embed=True)]
-):
+async def add_bill_member(user: UserSessionParsed, params: AddBillMemberParams) -> BillMember:
     """添加一个账单成员"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        bill = await check_bill_permission(bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
+        bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
                                            session=session)
-        if name in bill.members:
-            raise HTTPException(status_code=400, detail="Member already exists in the bill.")
-        bill.members.append(name)
+        bill_member = await BillMember(name=params.name).insert(session=session)
+        bill.members.append(bill_member)
         await bill.save(session=session)
-    return "ok"
+    return bill_member
+
+
+class RemoveBillMemberParams(BaseModel):
+    bill_id: Annotated[PydanticObjectId, Field(title="账单ID")]
+    bill_member_id: Annotated[PydanticObjectId, Field(title="成员ID")]
 
 
 @router.post("/member/remove")
-async def remove_bill_member(
-    user: UserSessionParsed,
-    bill_id: Annotated[PydanticObjectId, Body(title="账单ID", embed=True)],
-    name: Annotated[str, Body(title="成员名称", min_length=1, max_length=64, embed=True)]
-):
+async def remove_bill_member(user: UserSessionParsed, params: RemoveBillMemberParams) -> str:
     """移除一个账单成员"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        bill = await check_bill_permission(bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
+        bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
                                            session=session)
-        if name not in bill.members:
+
+        bill_member = await BillMember.get(params.bill_member_id, session=session)
+
+        if bill_member not in bill.members:
             raise HTTPException(status_code=400, detail="Member not found in the bill.")
-        bill.members.remove(name)
+        bill.members.remove(bill_member)
         await bill.save(session=session)
+        await bill_member.delete(session=session)
+    return "ok"
+
+
+class BindBillMemberParams(BaseModel):
+    bill_id: Annotated[PydanticObjectId, Field(title="账单ID")]
+    bill_member_id: Annotated[PydanticObjectId, Field(title="账单成员ID")]
+    user_id: Annotated[PydanticObjectId | None, Field(title="用户ID")]
+
+
+@router.post("/member/bind")
+async def bind_bill_member(user: UserSessionParsed, params: BindBillMemberParams) -> str:
+    """绑定账单成员到用户"""
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not authenticated.")
+    async with mongo_transaction() as session:
+        bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
+                                           session=session)
+        bill_member = await BillMember.get(params.bill_member_id, session=session)
+        if bill_member is None or bill_member not in bill.members:
+            raise HTTPException(status_code=404, detail="Bill member not found.")
+        bill_member.linked_user = User.get(params.user_id, session=session) if params.user_id else None
+        await bill_member.save(session=session)
     return "ok"

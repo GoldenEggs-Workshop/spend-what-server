@@ -5,7 +5,7 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
-from src.db import Bill, BillItem, BillAccess, BillAccessRole, mongo_transaction
+from src.db import Bill, BillItem, BillAccess, BillAccessRole, mongo_transaction, BillMember
 from .user import UserSessionParsed
 from src.types import PydanticDecimal128
 from .bill import check_bill_permission
@@ -38,7 +38,7 @@ class CreateBillItemParams(BaseModel):
     description: Annotated[str, Field(title="描述", max_length=256)]
     amount: Annotated[PydanticDecimal128, Field(title="金额")]
     currency: Annotated[str, Field(title="货币")]
-    paid_by: Annotated[str, Field(title="付款人", max_length=64)]
+    paid_by: Annotated[PydanticObjectId, Field(title="付款人ID")]
     occurred_time: Annotated[datetime, Field(title="发生时间")]
 
 
@@ -55,19 +55,21 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
             session=session
         )
 
-        if params.paid_by not in bill.members:
+        paid_member = await BillMember.get(params.paid_by, session=session)
+
+        if paid_member not in bill.members:
             raise HTTPException(status_code=400, detail="Paid by user is not a member of the bill.")
 
         now = datetime.now()
         item = BillItem(
-            bill=bill.to_ref(),
+            bill=bill,
             type=params.type,
             type_icon=params.type_icon,
             description=params.description,
             amount=params.amount,
             currency=params.currency,
-            created_by=user.to_ref(),
-            paid_by=params.paid_by,
+            created_by=user,
+            paid_by=paid_member,
             created_time=now,
             occurred_time=params.occurred_time
         )
@@ -81,7 +83,7 @@ class DeleteBillItemParams(BaseModel):
 
 
 @router.post("/delete")
-async def delete_bill_item(user: UserSessionParsed, params: DeleteBillItemParams):
+async def delete_bill_item(user: UserSessionParsed, params: DeleteBillItemParams) -> str:
     """删除账单条目"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
@@ -113,18 +115,28 @@ async def list_bill_items(user: UserSessionParsed, params: ListBillItemParams) -
         [BillAccessRole.OWNER, BillAccessRole.MEMBER, BillAccessRole.OBSERVER]
     )
 
-    pipeline = [
-        # 1. 匹配当前账单的 BillItem 记录
-        {"$match": {"bill.$id": params.bill_id}},
-
-        # 2. 按 bill_doc.item_updated_time 降序排序
-        {"$sort": {"occurred_time": -1}},
-
-        # 3. 跳过 skip 条，限制 limit 条
-        {"$skip": params.skip},
-        {"$limit": params.limit},
-    ]
-    bills = await BillItem.aggregate(pipeline).to_list()
+    # pipeline = [
+    #     # 1. 匹配当前账单的 BillItem 记录
+    #     {"$match": {"bill.$id": params.bill_id}},
+    #
+    #     # 2. 按 bill_doc.item_updated_time 降序排序
+    #     {"$sort": {"occurred_time": -1}},
+    #
+    #     # 3. 跳过 skip 条，限制 limit 条
+    #     {"$skip": params.skip},
+    #     {"$limit": params.limit},
+    # ]
+    # bills = await BillItem.aggregate(pipeline).to_list()
+    
+    bills = await (
+        BillItem.find_all()
+        .sort("-occurred_time")
+        .skip(params.skip)
+        .limit(params.limit)
+        .to_list()
+    )
+    for bill in bills:
+        await bill.fetch_link("paid_by")
     return bills
 
 
@@ -141,7 +153,7 @@ class UpdateBillItemParams(BaseModel):
 
 
 @router.post("/update")
-async def update_bill_item(user: UserSessionParsed, params: UpdateBillItemParams):
+async def update_bill_item(user: UserSessionParsed, params: UpdateBillItemParams) -> str:
     """更新账单条目"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")

@@ -30,10 +30,19 @@ class UserSession(Document):
         name = "user_session"
 
 
+class BillMember(Document):
+    """账单成员"""
+    name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64), Indexed()]
+    linked_user: Annotated[Link[User] | None, Field(title="关联用户"), Indexed()] = None
+
+    class Settings:
+        name = "bill_member"
+
+
 class Bill(Document):
     """账单"""
     title: Annotated[str, Field(title="标题")]
-    members: Annotated[list[str], Field(title="成员列表")] = []
+    members: Annotated[list[BillMember], Field(title="成员列表")] = []
     created_by: Annotated[Link[User], Field(title="创建人"), Indexed()]
     created_time: Annotated[datetime, Field(title="创建时间"), Indexed(index_type=DESCENDING)]
     item_updated_time: Annotated[datetime, Field(title="更新时间"), Indexed(index_type=DESCENDING)]
@@ -59,16 +68,6 @@ class BillAccess(Document):
         name = "bill_access"
 
 
-class BillMember(Document):
-    """账单成员"""
-    bill: Annotated[Link[Bill], Field(title="账单"), Indexed()]
-    name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64), Indexed()]
-    linked_user: Annotated[Link[User] | None, Field(title="关联用户"), Indexed()] = None
-
-    class Settings:
-        name = "bill_member"
-
-
 class BillItem(Document):
     """账单条目"""
 
@@ -79,7 +78,7 @@ class BillItem(Document):
     amount: Annotated[PydanticDecimal128, Field(title="金额")]
     currency: Annotated[str, Field(title="货币")]
     created_by: Annotated[Link[User], Field(title="创建人"), Indexed()]
-    paid_by: Annotated[str, Field(title="付款人"), Indexed()]
+    paid_by: Annotated[Link[BillMember], Field(title="付款人"), Indexed()]
     created_time: Annotated[datetime, Field(title="创建时间")]
     occurred_time: Annotated[datetime, Field(title="发生时间"), Indexed(index_type=DESCENDING)]
 
@@ -103,3 +102,15 @@ class BillLog(Document):
 
     class Settings:
         name = "bill_log"
+
+
+class BillShareToken(Document):
+    """账单分享令牌"""
+    token: Annotated[str, Indexed(unique=True)]
+    bill: Annotated[Link[Bill], Indexed()]
+    access_role: Annotated[BillAccessRole, Field(title="访问角色")] = BillAccessRole.OBSERVER
+    created_by: Annotated[Link[User], Indexed()]
+    created_time: Annotated[datetime, Field(title="创建时间"), Indexed(index_type=DESCENDING)]
+
+    class Settings:
+        name = "bill_share_token"
