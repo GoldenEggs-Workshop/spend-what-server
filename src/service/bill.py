@@ -190,6 +190,7 @@ async def update_bill_access(user: UserSessionParsed, params: UpdateBillAccessPa
 class AddBillMemberParams(BaseModel):
     bill_id: Annotated[PydanticObjectId, Field(title="账单ID")]
     name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64)]
+    user_id: Annotated[PydanticObjectId | None, Field(title="用户ID")] = None
 
 
 @member_router.post("/add")
@@ -200,7 +201,7 @@ async def add_bill_member(user: UserSessionParsed, params: AddBillMemberParams) 
     async with mongo_transaction() as session:
         bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
                                            session=session)
-        bill_member = await BillMember(name=params.name).insert(session=session)
+        bill_member = await BillMember(name=params.name, linked_user=params.user_id).insert(session=session)
         bill.members.append(bill_member)
         await bill.save(session=session)
     return bill_member
