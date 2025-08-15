@@ -290,6 +290,18 @@ async def share_bill(user: UserSessionParsed, params: ShareBillParams) -> dict:
     return {"token": bill_share_token.token}
 
 
+@share_router.post("/delete_all")
+async def delete_all_share_tokens(user: UserSessionParsed,
+                                  bill_id: PydanticObjectId = Body(title="账单ID", embed=True)) -> str:
+    """删除某个账单的所有分享令牌"""
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not authenticated.")
+    async with mongo_transaction() as session:
+        bill = await check_bill_permission(bill_id, user, [BillAccessRole.OWNER], session=session)
+        await BillShareToken.find({"bill.$id": bill.id}, session=session).delete(session=session)
+    return "ok"
+
+
 @share_router.post("/consume")
 async def consume_share_bill_token(user: UserSessionParsed, token: str = Body(title="Token", embed=True)) -> str:
     """使用分享令牌加入账单"""
