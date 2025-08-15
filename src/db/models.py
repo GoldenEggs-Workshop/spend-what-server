@@ -61,7 +61,7 @@ class BillAccess(Document):
 class BillMember(Document):
     """账单成员"""
     bill: Annotated[Link[Bill], Indexed()]
-    name: Annotated[str, Field(title="成员名称", max_length=64), Indexed()]
+    name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64), Indexed()]
     linked_user: Annotated[Link[User] | None, Field(title="关联用户"), Indexed()] = None
 
     class Settings:
@@ -78,7 +78,7 @@ class BillItem(Document):
     amount: Annotated[PydanticDecimal128, Field(title="金额")]
     currency: Annotated[str, Field(title="货币")]
     created_by: Annotated[Link[User], Field(title="创建人"), Indexed()]
-    paid_by: Annotated[str, Field(title="付款人"),Indexed()]
+    paid_by: Annotated[str, Field(title="付款人"), Indexed()]
     created_time: Annotated[datetime, Field(title="创建时间")]
     occurred_time: Annotated[datetime, Field(title="发生时间"), Indexed(index_type=DESCENDING)]
 
