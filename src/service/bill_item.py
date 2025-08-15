@@ -3,7 +3,7 @@ from typing import Annotated, Sequence
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, HTTPException, Body
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 
 from src.db import Bill, BillItem, BillAccess, BillAccessRole, mongo_transaction, BillMember
 from .user import UserSessionParsed
@@ -42,8 +42,11 @@ class CreateBillItemParams(BaseModel):
     occurred_time: Annotated[datetime, Field(title="发生时间")]
 
 
-@router.post("/create")
-async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams) -> dict:
+@router.post("/create", response_model=create_model(
+    "CreateBillItemResponse",
+    item_id=(PydanticObjectId, Field(title="创建的账单条目 ID"))
+))
+async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams):
     """创建账单条目"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
@@ -74,7 +77,7 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
             occurred_time=params.occurred_time
         )
         await item.insert(session=session)
-    return {"item_id": str(item.id)}
+    return {"item_id": item.id}
 
 
 class DeleteBillItemParams(BaseModel):

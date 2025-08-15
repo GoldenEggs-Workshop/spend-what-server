@@ -111,6 +111,9 @@ class BillShareToken(Document):
     access_role: Annotated[BillAccessRole, Field(title="访问角色")] = BillAccessRole.OBSERVER
     created_by: Annotated[Link[User], Indexed()]
     created_time: Annotated[datetime, Field(title="创建时间"), Indexed(index_type=DESCENDING)]
+    expires_at: Annotated[datetime | None, Field(title="过期时间")] = None
+    remaining_uses: Annotated[int | None, Field(title="剩余使用次数")] = 1
+    bill_member: Annotated[Link[BillMember] | None, Field(title="关联账单成员")] = None
 
     class Settings:
         name = "bill_share_token"
