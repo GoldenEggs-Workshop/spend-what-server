@@ -187,8 +187,8 @@ async def update_bill_members(user: UserSessionParsed, params: UpdateBillMembers
 @router.post("/member/add")
 async def add_bill_member(
     user: UserSessionParsed,
-    bill_id: Annotated[PydanticObjectId, Field(title="账单ID", embed=True)],
-    name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64, embed=True)]
+    bill_id: Annotated[PydanticObjectId, Body(title="账单ID", embed=True)],
+    name: Annotated[str, Body(title="成员名称", min_length=1, max_length=64, embed=True)]
 ):
     """添加一个账单成员"""
     if user is None:
@@ -206,8 +206,8 @@ async def add_bill_member(
 @router.post("/member/remove")
 async def remove_bill_member(
     user: UserSessionParsed,
-    bill_id: Annotated[PydanticObjectId, Field(title="账单ID", embed=True)],
-    name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64, embed=True)]
+    bill_id: Annotated[PydanticObjectId, Body(title="账单ID", embed=True)],
+    name: Annotated[str, Body(title="成员名称", min_length=1, max_length=64, embed=True)]
 ):
     """移除一个账单成员"""
     if user is None:

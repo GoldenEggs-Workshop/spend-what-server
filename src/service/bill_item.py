@@ -97,7 +97,7 @@ async def delete_bill_item(user: UserSessionParsed, params: DeleteBillItemParams
 
 
 class ListBillItemParams(BaseModel):
-    bill_id: Annotated[PydanticObjectId, Body(title="账单ID", embed=True)]
+    bill_id: Annotated[PydanticObjectId, Field(title="账单ID", embed=True)]
     skip: Annotated[int, Field(title="跳过的账单条目数量", ge=0)] = 0
     limit: Annotated[int, Field(title="账单条目数量", ge=0, le=128)] = 16
 
