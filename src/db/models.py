@@ -59,8 +59,8 @@ class BillAccess(Document):
         name = "bill_access"
 
 
-class LinkedBillMember(Document):
-    """已链接的账单成员"""
+class BillMember(Document):
+    """账单成员"""
     bill: Annotated[Link[Bill], Field(title="账单"), Indexed()]
     name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64), Indexed()]
     linked_user: Annotated[Link[User] | None, Field(title="关联用户"), Indexed()] = None
