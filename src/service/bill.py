@@ -81,7 +81,9 @@ async def create_bill(user: UserSessionParsed, title: str = Body(title="账单�
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        bill = Bill(title=title, members=[], created_time=datetime.now(), item_updated_time=datetime.now())
+        bill = Bill(title=title, members=[], created_by=user,
+                    created_time=datetime.now(),
+                    item_updated_time=datetime.now())
         await bill.insert(session=session)
         await BillAccess(bill=bill.to_ref(), user=user, role=BillAccessRole.OWNER).insert(session=session)
     return bill
@@ -113,7 +115,6 @@ async def delete_bill(user: UserSessionParsed, params: DeleteBillsParams):
 class UpdateBillParams(BaseModel):
     id: Annotated[PydanticObjectId, Field(title="账单ID")]
     title: Annotated[str, Field(title="账单标题", min_length=1)]
-    members: Annotated[list[str], Field(title="成员名称列表", max_length=128)]
 
 
 @router.post("/update")
@@ -131,7 +132,6 @@ async def update_bill(user: UserSessionParsed, params: UpdateBillParams):
         ) is None:
             raise HTTPException(status_code=403, detail="You do not have permission to update this bill.")
         bill.title = params.title
-        bill.members = params.members
         await bill.save(session=session)
     return "ok"
 

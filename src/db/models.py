@@ -34,6 +34,7 @@ class Bill(Document):
     """账单"""
     title: Annotated[str, Field(title="标题")]
     members: Annotated[list[str], Field(title="成员列表")] = []
+    created_by: Annotated[Link[User], Field(title="创建人"), Indexed()]
     created_time: Annotated[datetime, Field(title="创建时间"), Indexed(index_type=DESCENDING)]
     item_updated_time: Annotated[datetime, Field(title="更新时间"), Indexed(index_type=DESCENDING)]
 
@@ -58,9 +59,9 @@ class BillAccess(Document):
         name = "bill_access"
 
 
-class BillMember(Document):
-    """账单成员"""
-    bill: Annotated[Link[Bill], Indexed()]
+class LinkedBillMember(Document):
+    """已链接的账单成员"""
+    bill: Annotated[Link[Bill], Field(title="账单"), Indexed()]
     name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64), Indexed()]
     linked_user: Annotated[Link[User] | None, Field(title="关联用户"), Indexed()] = None
 
