@@ -283,7 +283,7 @@ async def share_bill(user: UserSessionParsed, params: ShareBillParams) -> dict:
             access_role=params.access_role,
             created_by=user,
             crated_time=now,
-            expires_at=params.exprires_at,
+            expires_at=params.expires_at,
             remaining_uses=params.remaining_uses,
             bill_member=bill_member,
         )
