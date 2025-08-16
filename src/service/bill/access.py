@@ -24,9 +24,35 @@ class AccessPublic(Access):
     user_name: Annotated[str, Field(title="用户名")]
 
 
+# class SetBillAccessParams(BaseModel):
+#     bill_id: Annotated[PydanticObjectId, Field(title="账单ID")]
+#     access_list: Annotated[list[Access], Field(title="访问权限列表", max_length=128)]
+#
+#
+# @router.post("/set")
+# async def set_bill_access(user: UserSessionParsed, params: SetBillAccessParams) -> str:
+#     """配置账单访问权限"""
+#     if user is None:
+#         raise HTTPException(status_code=401, detail="User not authenticated.")
+#     async with mongo_transaction() as session:
+#         bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER], session=session)
+#         await BillAccess.find(
+#             {"bill.$id": params.bill_id},
+#             session=session
+#         ).delete(session=session)
+#         # 添加新的访问权限
+#         for access in params.access_list:
+#             user_id = access.user_id
+#             role = access.role
+#             await BillAccess(bill=bill.to_ref(), user=user_id, role=role).insert(session=session)
+#
+#     return "ok"
+
+
 class UpdateBillAccessParams(BaseModel):
     bill_id: Annotated[PydanticObjectId, Field(title="账单ID")]
-    access_list: Annotated[list[Access], Field(title="访问权限列表", max_length=128)]
+    user_id: Annotated[PydanticObjectId, Field(title="用户ID")]
+    role: Annotated[BillAccessRole, Field(title="访问权限角色")]
 
 
 @router.post("/update")
@@ -35,16 +61,17 @@ async def update_bill_access(user: UserSessionParsed, params: UpdateBillAccessPa
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER], session=session)
-        await BillAccess.find(
-            {"bill.$id": params.bill_id},
+        await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER], session=session)
+        access = await BillAccess.find_one(
+            {"bill.$id": params.bill_id, "user.$id": params.user_id},
             session=session
-        ).delete(session=session)
-        # 添加新的访问权限
-        for access in params.access_list:
-            user_id = access.user_id
-            role = access.role
-            await BillAccess(bill=bill.to_ref(), user=user_id, role=role).insert(session=session)
+        )
+        if access is None:
+            raise HTTPException(status_code=404, detail="Access not found.")
+        if access.role == BillAccessRole.OWNER:
+            raise HTTPException(status_code=403, detail="Cannot update owner access role.")
+        access.role = params.role
+        await access.save(session=session)
 
     return "ok"
 

@@ -83,3 +83,27 @@ async def bind_bill_member(user: UserSessionParsed, params: BindBillMemberParams
         bill_member.linked_user = await User.get(params.user_id, session=session) if params.user_id else None
         await bill_member.save(session=session)
     return "ok"
+
+
+class UpdateBillMemberParams(BaseModel):
+    bill_id: Annotated[PydanticObjectId, Field(title="账单ID")]
+    bill_member_id: Annotated[PydanticObjectId, Field(title="成员ID")]
+    name: Annotated[str, Field(title="成员名称", min_length=1, max_length=64)]
+
+
+@router.post("/update")
+async def update_bill_member(user: UserSessionParsed, params: UpdateBillMemberParams) -> str:
+    """更新账单成员信息"""
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not authenticated.")
+    async with mongo_transaction() as session:
+        bill = await check_bill_permission(
+            params.bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
+            session=session
+        )
+        bill_member = await BillMember.get(params.bill_member_id, session=session)
+        if bill_member is None or bill_member.id not in [m.ref.id for m in bill.members]:
+            raise HTTPException(status_code=404, detail="Bill member not found.")
+        bill_member.name = params.name
+        await bill_member.save(session=session)
+    return "ok"
