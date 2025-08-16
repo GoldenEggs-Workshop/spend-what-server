@@ -6,11 +6,11 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field, create_model
 
 from src.db import Bill, BillItem, BillAccess, BillAccessRole, mongo_transaction, BillMember
-from .user import UserSessionParsed
+from ..user import UserSessionParsed
 from src.types import PydanticDecimal128
 from .bill import check_bill_permission
 
-router = APIRouter(prefix="/bill/item", tags=['bill/item'])
+router = APIRouter(prefix="/item", tags=['bill/item'])
 
 
 async def get_bill_item_with_permission(
