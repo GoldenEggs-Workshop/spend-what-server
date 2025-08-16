@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field, create_model
 from src.db import Bill, BillAccessRole, BillAccess, BillItem, mongo_transaction, BillMember, User, BillShareToken
 from ..models import BillPublic
 from ..user import UserSessionParsed
-from .access import get_bill_access_list
 
 router = APIRouter(tags=['bill'])
 

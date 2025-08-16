@@ -68,6 +68,8 @@ async def list_bill_access(user: UserSessionParsed,
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        await check_bill_permission(bill_id, user, [BillAccessRole.OWNER], session=session)
+        await check_bill_permission(bill_id, user,
+                                    [BillAccessRole.OWNER, BillAccessRole.MEMBER, BillAccessRole.OBSERVER],
+                                    session=session)
         result = await get_bill_access_list(bill_id, session=session)
     return result
