@@ -7,6 +7,7 @@ from fastapi import HTTPException, APIRouter, Body
 from pydantic import BaseModel, Field, create_model
 
 from src.db import Bill, BillAccessRole, BillAccess, BillItem, mongo_transaction, BillMember, User, BillShareToken
+from .models import BillPublic
 from .user import UserSessionParsed
 
 router = APIRouter(prefix="/bill", tags=['bill'])
@@ -41,7 +42,7 @@ class ListBillParams(BaseModel):
 
 
 @router.post("/list")
-async def list_bills(user: UserSessionParsed, params: ListBillParams) -> list[Bill]:
+async def list_bills(user: UserSessionParsed, params: ListBillParams) -> list[BillPublic]:
     """获取用户的账单列表"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
@@ -74,12 +75,17 @@ async def list_bills(user: UserSessionParsed, params: ListBillParams) -> list[Bi
     ]
     # bills_cursor = await db.bill_member.aggregate(pipeline)
     bills = await BillAccess.aggregate(pipeline).to_list()
+    bills_public = []
+    for b in bills:
+        bill_public = await BillPublic.from_orm_bill(Bill.parse_obj(b))
+        bills_public.append(bill_public)
+
     # print(type(bills), bills)
-    return bills
+    return bills_public
 
 
 @router.post("/create")
-async def create_bill(user: UserSessionParsed, title: str = Body(title="账单标题", embed=True)) -> Bill:
+async def create_bill(user: UserSessionParsed, title: str = Body(title="账单标题", embed=True)) -> BillPublic:
     """创建一个新的账单"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
@@ -89,12 +95,7 @@ async def create_bill(user: UserSessionParsed, title: str = Body(title="账单�
                     item_updated_time=datetime.now())
         await bill.insert(session=session)
         await BillAccess(bill=bill.to_ref(), user=user, role=BillAccessRole.OWNER).insert(session=session)
-        bill_dict = bill.dict()
-        bill_dict["created_by"] = {
-            "id": bill.created_by.ref.id,
-            "username": bill.created_by.ref.username
-        }
-    return bill
+    return await BillPublic.from_orm_bill(bill)
 
 
 class DeleteBillsParams(BaseModel):
