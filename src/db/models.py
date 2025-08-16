@@ -42,7 +42,7 @@ class BillMember(Document):
 class Bill(Document):
     """账单"""
     title: Annotated[str, Field(title="标题")]
-    members: Annotated[list[BillMember], Field(title="成员列表")] = []
+    members: Annotated[list[Link[BillMember]], Field(title="成员列表")] = []
     created_by: Annotated[Link[User], Field(title="创建人"), Indexed()]
     created_time: Annotated[datetime, Field(title="创建时间"), Indexed(index_type=DESCENDING)]
     item_updated_time: Annotated[datetime, Field(title="更新时间"), Indexed(index_type=DESCENDING)]

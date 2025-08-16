@@ -89,6 +89,11 @@ async def create_bill(user: UserSessionParsed, title: str = Body(title="账单�
                     item_updated_time=datetime.now())
         await bill.insert(session=session)
         await BillAccess(bill=bill.to_ref(), user=user, role=BillAccessRole.OWNER).insert(session=session)
+        bill_dict = bill.dict()
+        bill_dict["created_by"] = {
+            "id": bill.created_by.ref.id,
+            "username": bill.created_by.ref.username
+        }
     return bill
 
 
@@ -202,7 +207,7 @@ async def add_bill_member(user: UserSessionParsed, params: AddBillMemberParams) 
         bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
                                            session=session)
         bill_member = await BillMember(name=params.name, linked_user=params.user_id).insert(session=session)
-        bill.members.append(bill_member)
+        bill.members.append(BillMember.link_from_id(bill_member.id))
         await bill.save(session=session)
     return bill_member
 
@@ -223,9 +228,11 @@ async def remove_bill_member(user: UserSessionParsed, params: RemoveBillMemberPa
 
         bill_member = await BillMember.get(params.bill_member_id, session=session)
 
-        if bill_member not in bill.members:
+        if bill_member.id not in [m.ref.id for m in bill.members]:
             raise HTTPException(status_code=400, detail="Member not found in the bill.")
-        bill.members.remove(bill_member)
+
+        bill.members = [m for m in bill.members if m.ref.id != bill_member.id]
+
         await bill.save(session=session)
         await bill_member.delete(session=session)
     return "ok"
@@ -246,9 +253,9 @@ async def bind_bill_member(user: UserSessionParsed, params: BindBillMemberParams
         bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
                                            session=session)
         bill_member = await BillMember.get(params.bill_member_id, session=session)
-        if bill_member is None or bill_member not in bill.members:
+        if bill_member is None or bill_member.id not in [m.ref.id for m in bill.members]:
             raise HTTPException(status_code=404, detail="Bill member not found.")
-        bill_member.linked_user = User.get(params.user_id, session=session) if params.user_id else None
+        bill_member.linked_user = await User.get(params.user_id, session=session) if params.user_id else None
         await bill_member.save(session=session)
     return "ok"
 
@@ -273,7 +280,7 @@ async def share_bill(user: UserSessionParsed, params: ShareBillParams) -> dict:
         bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER], session=session)
 
         bill_member = await BillMember.get(params.bill_member_id, session=session)
-        if bill_member is None or bill_member not in bill.members:
+        if bill_member is None or bill_member.id not in [m.ref.id for m in bill.members]:
             raise HTTPException(status_code=404, detail="Bill member not found.")
 
         now = datetime.now()
@@ -282,8 +289,8 @@ async def share_bill(user: UserSessionParsed, params: ShareBillParams) -> dict:
             bill=bill,
             access_role=params.access_role,
             created_by=user,
-            crated_time=now,
-            expires_at=params.exprires_at,
+            created_time=now,
+            expires_at=params.expires_at,
             remaining_uses=params.remaining_uses,
             bill_member=bill_member,
         )
@@ -331,7 +338,7 @@ async def consume_share_bill_token(user: UserSessionParsed, token: str = Body(ti
         if share_token.bill_member:
             # 如果分享令牌关联了账单成员，则将用户绑定到该成员
             bill_member = await BillMember.get(share_token.bill_member.ref.id, session=session)
-            bill_member.linked_user = user
+            bill_member.linked_user = User.link_from_id(user.id)
             await bill_member.save(session=session)
 
         if share_token.remaining_uses is not None:
