@@ -46,6 +46,10 @@ class CreateBillItemParams(BaseModel):
     "CreateBillItemResponse",
     item_id=(PydanticObjectId, Field(title="创建的账单条目 ID"))
 ))
+@router.post("/create", response_model=create_model(
+    "CreateBillItemResponse",
+    item_id=(PydanticObjectId, Field(title="创建的账单条目 ID"))
+))
 async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams):
     """创建账单条目"""
     if user is None:
@@ -60,7 +64,9 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
 
         paid_member = await BillMember.get(params.paid_by, session=session)
 
-        if paid_member not in bill.members:
+        # 校验成员是否在账单中
+        await bill.fetch_link(Bill.members)
+        if not any(m.id == paid_member.id for m in bill.members):
             raise HTTPException(status_code=400, detail="Paid by user is not a member of the bill.")
 
         now = datetime.now()
@@ -78,6 +84,7 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
         )
         await item.insert(session=session)
     return {"item_id": item.id}
+
 
 
 class DeleteBillItemParams(BaseModel):

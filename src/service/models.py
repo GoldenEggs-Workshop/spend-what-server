@@ -46,6 +46,8 @@ class BillPublic(BaseModel):
     created_by: Annotated[UserPublic, Field(title="创建人")]
     created_time: Annotated[datetime, Field(title="创建时间")]
     item_updated_time: Annotated[datetime, Field(title="更新时间")]
+    occurred_at: Annotated[datetime, Field(title="发生时间")]
+    currency: Annotated[str, Field(title="货币")]
 
     @classmethod
     async def from_orm_bill(cls, bill):
@@ -62,5 +64,8 @@ class BillPublic(BaseModel):
                 email=getattr(bill.created_by, "email", None)
             ),
             created_time=bill.created_time,
-            item_updated_time=bill.item_updated_time
+            item_updated_time=bill.item_updated_time,
+            occurred_at=bill.occurred_at,
+            currency=bill.currency,
         )
+

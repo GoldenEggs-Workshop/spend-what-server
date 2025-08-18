@@ -45,8 +45,9 @@ class Bill(Document):
     members: Annotated[list[Link[BillMember]], Field(title="成员列表")] = []
     created_by: Annotated[Link[User], Field(title="创建人"), Indexed()]
     created_time: Annotated[datetime, Field(title="创建时间"), Indexed(index_type=DESCENDING)]
+    occurred_at: Annotated[datetime, Field(title="发生时间"), Indexed(index_type=DESCENDING)]
     item_updated_time: Annotated[datetime, Field(title="更新时间"), Indexed(index_type=DESCENDING)]
-
+    currency: Annotated[str, Field(title="货币")]
     class Settings:
         name = "bill"
 

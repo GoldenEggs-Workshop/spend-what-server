@@ -81,16 +81,25 @@ async def list_bills(user: UserSessionParsed, params: ListBillParams) -> list[Bi
     # print(type(bills), bills)
     return bills_public
 
+class CreateBillModel(BaseModel):
+    title: Annotated[str, Field(title="账单标题", min_length=1)]
+    occurred_at: Annotated[datetime, Field(title="发生时间")]
+    currency: Annotated[str, Field(title="货币")]
+
 
 @router.post("/create")
-async def create_bill(user: UserSessionParsed, title: str = Body(title="账单标题", embed=True)) -> BillPublic:
+async def create_bill(user: UserSessionParsed, bill: CreateBillModel) -> BillPublic:
     """创建一个新的账单"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        bill = Bill(title=title, members=[], created_by=user,
+        bill = Bill(title=bill.title, 
+                    members=[], 
+                    created_by=user,
                     created_time=datetime.now(),
-                    item_updated_time=datetime.now())
+                    item_updated_time=datetime.now(),
+                    occurred_at=bill.occurred_at,
+                    currency=bill.currency)
         await bill.insert(session=session)
         await BillAccess(bill=bill.to_ref(), user=user, role=BillAccessRole.OWNER).insert(session=session)
     return await BillPublic.from_orm_bill(bill)
