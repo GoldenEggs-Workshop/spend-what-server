@@ -1,6 +1,6 @@
 from beanie import init_beanie
 
-from src.db.client import client, mongo_transaction
+from src.db.client import client, mongo_transaction, run_transaction_with_retry
 from src.db.models import *
 
 

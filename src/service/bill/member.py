@@ -6,7 +6,8 @@ from beanie import PydanticObjectId, Link
 from fastapi import HTTPException, APIRouter, Body
 from pydantic import BaseModel, Field, create_model
 
-from src.db import Bill, BillAccessRole, BillAccess, BillItem, mongo_transaction, BillMember, User, BillShareToken
+from src.db import Bill, BillAccessRole, BillAccess, BillItem, mongo_transaction, BillMember, User, BillShareToken, \
+    run_transaction_with_retry
 from .bill import check_bill_permission
 from ..models import BillPublic
 from ..user import UserSessionParsed
@@ -25,13 +26,16 @@ async def add_bill_member(user: UserSessionParsed, params: AddBillMemberParams) 
     """添加一个账单成员"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
-    async with mongo_transaction() as session:
+
+    async def _txn(session):
         bill = await check_bill_permission(params.bill_id, user, [BillAccessRole.OWNER, BillAccessRole.MEMBER],
                                            session=session)
         bill_member = await BillMember(name=params.name, linked_user=params.user_id).insert(session=session)
         bill.members.append(BillMember.link_from_id(bill_member.id))
         await bill.save(session=session)
-    return bill_member
+        return bill_member
+
+    return await run_transaction_with_retry(_txn)
 
 
 class RemoveBillMemberParams(BaseModel):
