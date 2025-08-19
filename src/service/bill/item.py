@@ -59,8 +59,9 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
         )
 
         paid_member = await BillMember.get(params.paid_by, session=session)
+        bill_members_id_list = [p.ref.id for p in bill.members]
 
-        if paid_member not in bill.members:
+        if paid_member.id not in bill_members_id_list:
             raise HTTPException(status_code=400, detail="Paid by user is not a member of the bill.")
 
         now = datetime.now()
