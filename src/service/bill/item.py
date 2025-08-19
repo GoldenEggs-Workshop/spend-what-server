@@ -19,16 +19,16 @@ async def get_bill_item_with_permission(
     user: UserSessionParsed,
     allowed_roles: Sequence[BillAccessRole],
     session=None
-) -> BillItem:
+) -> tuple[BillItem, Bill]:
     # 校验账单权限
-    await check_bill_permission(bill_id, user, allowed_roles, session=session)
+    bill = await check_bill_permission(bill_id, user, allowed_roles, session=session)
 
     # 查找条目
     item = await BillItem.find_one({"_id": item_id, "bill.$id": bill_id}, session=session)
     if item is None:
         raise HTTPException(status_code=404, detail="Bill item not found.")
 
-    return item
+    return item, bill
 
 
 class CreateBillItemParams(BaseModel):
@@ -78,6 +78,7 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
             occurred_time=params.occurred_time
         )
         await item.insert(session=session)
+        await bill.update_updated_time(session=session)
     return {"item_id": item.id}
 
 
@@ -92,12 +93,13 @@ async def delete_bill_item(user: UserSessionParsed, params: DeleteBillItemParams
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        item = await get_bill_item_with_permission(
+        item, bill = await get_bill_item_with_permission(
             params.bill_id, params.item_id, user,
             [BillAccessRole.OWNER, BillAccessRole.MEMBER],
             session=session
         )
         await item.delete(session=session)
+        await bill.update_updated_time(session=session)
 
     return "ok"
 
@@ -162,7 +164,7 @@ async def update_bill_item(user: UserSessionParsed, params: UpdateBillItemParams
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        item = await get_bill_item_with_permission(
+        item, bill = await get_bill_item_with_permission(
             params.bill_id, params.item_id, user,
             [BillAccessRole.OWNER, BillAccessRole.MEMBER],
             session=session
@@ -186,5 +188,6 @@ async def update_bill_item(user: UserSessionParsed, params: UpdateBillItemParams
             },
             session=session
         )
+        await bill.update_updated_time(session=session)
 
         return "ok"

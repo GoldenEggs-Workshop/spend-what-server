@@ -50,6 +50,16 @@ class Bill(Document):
     class Settings:
         name = "bill"
 
+    @classmethod
+    async def update_updated_time(cls, session=None):
+        """更新账单的更新时间"""
+        now = datetime.now()
+        await cls.find_one_and_update(
+            {},
+            {"$set": {"item_updated_time": now}},
+            session=session
+        )
+
 
 class BillAccessRole(Enum):
     """账单成员角色"""
