@@ -4,7 +4,7 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from pydantic import BaseModel, Field
 
-from src.db import BillMember, Bill
+from src.db import BillMember, Bill, BillExchangeRate
 
 
 class UserPublic(BaseModel):
@@ -43,6 +43,8 @@ class BillPublic(BaseModel):
     id: PydanticObjectId
     title: Annotated[str, Field(title="标题")]
     members: Annotated[list[BillMemberPublic], Field(title="成员列表")]
+    currency: Annotated[str, Field(title="基础货币", min_length=3, max_length=3)]
+    exchange_rates: Annotated[list[BillExchangeRate], Field(title="账单内汇率表")]
     created_by: Annotated[UserPublic, Field(title="创建人")]
     created_time: Annotated[datetime, Field(title="创建时间")]
     item_updated_time: Annotated[datetime, Field(title="更新时间")]
@@ -55,6 +57,8 @@ class BillPublic(BaseModel):
         return cls(
             id=str(bill.id),
             title=bill.title,
+            currency=bill.currency,
+            exchange_rates=bill.exchange_rates,
             members=[await BillMemberPublic.from_orm_bill_member(m) for m in bill.members],
             created_by=UserPublic(
                 id=str(bill.created_by.id),

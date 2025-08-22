@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Annotated
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, APIRouter, Response, Cookie, Depends
 from pydantic import Field, BaseModel
@@ -18,12 +19,12 @@ async def parse_user_session(session: str = Cookie(None)) -> User | None:
     user_session = await UserSession.find_one(UserSession.value == session)
     if user_session is None:
         return None
-    if user_session.expires_at < datetime.now():
+    if user_session.expires_at < datetime.now(ZoneInfo("UTC")):
         await user_session.delete()
         return None
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("UTC"))
     if user_session.expires_at - now < timedelta(days=1):
-        user_session.expires_at = datetime.now() + timedelta(days=30)
+        user_session.expires_at = datetime.now(ZoneInfo("UTC")) + timedelta(days=30)
         await user_session.save()
     return await User.get(user_session.user.ref.id)
 
@@ -62,7 +63,7 @@ async def login_user(params: ApiUser, resp: Response) -> dict:
         if password_sha256 != user.password_sha256:
             raise HTTPException(status_code=400, detail="Username or password are not matched.")
         value = str(uuid4())
-        now = datetime.now()
+        now = datetime.now(ZoneInfo("UTC"))
         await UserSession(value=value, expires_at=now + timedelta(days=30), user=user).insert(session=session)
 
     resp.set_cookie("session", value)

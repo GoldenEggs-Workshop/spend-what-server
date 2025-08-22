@@ -1,6 +1,7 @@
 from uuid import uuid4
 from datetime import datetime
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from beanie import PydanticObjectId, Link
 from fastapi import HTTPException, APIRouter, Body
@@ -39,7 +40,7 @@ async def share_bill(user: UserSessionParsed, params: ShareBillParams) -> dict:
         else:
             bill_member = None
 
-        now = datetime.now()
+        now = datetime.now(ZoneInfo("UTC"))
         bill_share_token = BillShareToken(
             token=str(uuid4()),
             bill=bill,
@@ -78,7 +79,7 @@ async def consume_share_bill_token(user: UserSessionParsed, token: str = Body(ti
         share_token = await BillShareToken.find_one(BillShareToken.token == token, session=session)
         if share_token is None:
             raise HTTPException(status_code=404, detail="Share token not found.")
-        now = datetime.now()
+        now = datetime.now(ZoneInfo("UTC"))
         if share_token.expires_at and share_token.expires_at < now:
             raise HTTPException(status_code=400, detail="Share token has expired.")
         if share_token.remaining_uses is not None and share_token.remaining_uses <= 0:

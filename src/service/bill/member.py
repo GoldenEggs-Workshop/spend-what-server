@@ -108,6 +108,5 @@ async def update_bill_member(user: UserSessionParsed, params: UpdateBillMemberPa
         bill_member = await BillMember.get(params.bill_member_id, session=session)
         if bill_member is None or bill_member.id not in [m.ref.id for m in bill.members]:
             raise HTTPException(status_code=404, detail="Bill member not found.")
-        bill_member.name = params.name
-        await bill_member.save(session=session)
+        await bill_member.set({"name": params.name}, session=session)
     return "ok"

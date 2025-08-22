@@ -1,10 +1,11 @@
 from datetime import datetime
 from enum import Enum
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from beanie import Document, Indexed, Link
 # from bson import Decimal128
-from pydantic import Field
+from pydantic import Field, BaseModel
 from pymongo import DESCENDING
 
 from src.types import PydanticDecimal128
@@ -39,10 +40,18 @@ class BillMember(Document):
         name = "bill_member"
 
 
+class BillExchangeRate(BaseModel):
+    currency: Annotated[str, Field(title="币种", pattern="^[A-Z]{3}$")]  # 如 EUR, JPY
+    rate: Annotated[PydanticDecimal128, Field(title="汇率", description="1次要汇率=x主汇率")]
+    last_modified: Annotated[datetime, Field(title="最后修改时间")] = datetime.now(ZoneInfo("UTC"))
+
+
 class Bill(Document):
     """账单"""
     title: Annotated[str, Field(title="标题")]
     members: Annotated[list[Link[BillMember]], Field(title="成员列表")] = []
+    currency: Annotated[str, Field(title="基础货币", min_length=3, max_length=3)]
+    exchange_rates: Annotated[list[BillExchangeRate], Field(title="账单内汇率表")] = []
     created_by: Annotated[Link[User], Field(title="创建人"), Indexed()]
     created_time: Annotated[datetime, Field(title="创建时间"), Indexed(index_type=DESCENDING)]
     item_updated_time: Annotated[datetime, Field(title="更新时间"), Indexed(index_type=DESCENDING)]
@@ -50,15 +59,10 @@ class Bill(Document):
     class Settings:
         name = "bill"
 
-    @classmethod
-    async def update_updated_time(cls, session=None):
+    async def update_updated_time(self, session=None):
         """更新账单的更新时间"""
-        now = datetime.now()
-        await cls.find_one_and_update(
-            {},
-            {"$set": {"item_updated_time": now}},
-            session=session
-        )
+        now = datetime.now(ZoneInfo("UTC"))
+        await self.set({"item_updated_time": now}, session=session)
 
 
 class BillAccessRole(Enum):

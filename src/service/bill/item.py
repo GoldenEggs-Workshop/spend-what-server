@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Annotated, Sequence
+from zoneinfo import ZoneInfo
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, HTTPException, Body
@@ -64,7 +65,7 @@ async def create_bill_item(user: UserSessionParsed, params: CreateBillItemParams
         if paid_member.id not in bill_members_id_list:
             raise HTTPException(status_code=400, detail="Paid by user is not a member of the bill.")
 
-        now = datetime.now()
+        now = datetime.now(ZoneInfo("UTC"))
         item = BillItem(
             bill=bill,
             type=params.type,

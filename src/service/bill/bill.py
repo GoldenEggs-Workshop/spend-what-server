@@ -1,6 +1,7 @@
 from uuid import uuid4
 from datetime import datetime
 from typing import Annotated, Sequence
+from zoneinfo import ZoneInfo
 
 from beanie import PydanticObjectId, Link
 from fastapi import HTTPException, APIRouter, Body
@@ -82,15 +83,23 @@ async def list_bills(user: UserSessionParsed, params: ListBillParams) -> list[Bi
     return bills_public
 
 
+class BillCreateParams(BaseModel):
+    title: Annotated[str, Field(title="账单标题", min_length=1, max_length=128)]
+    currency: Annotated[str, Field(title="基础货币", pattern="^[A-Z]{3}$")]
+
+
 @router.post("/create")
-async def create_bill(user: UserSessionParsed, title: str = Body(title="账单标题", embed=True)) -> BillPublic:
+async def create_bill(user: UserSessionParsed, params: BillCreateParams) -> BillPublic:
     """创建一个新的账单"""
     if user is None:
         raise HTTPException(status_code=401, detail="User not authenticated.")
     async with mongo_transaction() as session:
-        bill = Bill(title=title, members=[], created_by=user,
-                    created_time=datetime.now(),
-                    item_updated_time=datetime.now())
+        bill = Bill(title=params.title, members=[],
+                    currency=params.currency,
+                    exchange_rates=[],
+                    created_by=user,
+                    created_time=datetime.now(ZoneInfo("UTC")),
+                    item_updated_time=datetime.now(ZoneInfo("UTC")))
         await bill.insert(session=session)
         await BillAccess(bill=bill.to_ref(), user=user, role=BillAccessRole.OWNER).insert(session=session)
     return await BillPublic.from_orm_bill(bill)
@@ -122,6 +131,7 @@ async def delete_bill(user: UserSessionParsed, params: DeleteBillsParams) -> str
 class UpdateBillParams(BaseModel):
     id: Annotated[PydanticObjectId, Field(title="账单ID")]
     title: Annotated[str, Field(title="账单标题", min_length=1)]
+    currency: Annotated[str, Field(title="基础货币", pattern="^[A-Z]{3}$")]
 
 
 @router.post("/update")
@@ -138,9 +148,8 @@ async def update_bill(user: UserSessionParsed, params: UpdateBillParams) -> str:
             session=session,
         ) is None:
             raise HTTPException(status_code=403, detail="You do not have permission to update this bill.")
-        bill.title = params.title
-        await bill.save(session=session)
+        await bill.update({"$set": {
+            "title": params.title,
+            "currency": params.currency
+        }}, session=session)
     return "ok"
-
-
-
